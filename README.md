@@ -4,7 +4,9 @@ A single-page web tool that turns NSW council **business papers** (agenda PDFs) 
 
 Part of the [councilpapers.app](https://councilpapers.app) civic-transparency project.
 
-**Live:** https://angehume-spec.github.io/agenda-reader/
+**Live:**
+https://angehume-spec.github.io/agendas/
+
 
 ---
 
