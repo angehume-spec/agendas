@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agenda Reader — InfoCouncil business papers</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --ink:#18222C; --ink-soft:#43505C; --muted:#6B7682;
+    --paper:#E9EDEB; --surface:#FFFFFF; --line:#D6DCDA; --line-soft:#E7EBE9;
+    --accent:#0C6B66; --accent-ink:#074C48; --accent-wash:#E0EEED;
+    --amber:#8F5410; --amber-wash:#F2E8D8; --amber-line:#E3D2B6;
+    --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,"SFMono-Regular","SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+    --shadow:0 1px 2px rgba(24,34,44,.04),0 6px 24px rgba(24,34,44,.06);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--paper); color:var(--ink); font-family:var(--sans);
+    line-height:1.5; -webkit-font-smoothing:antialiased;
+    padding:32px 20px 96px;
+  }
+  .wrap{max-width:880px;margin:0 auto}
+
+  /* ---- masthead of the tool itself ---- */
+  header.tool{margin-bottom:26px}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--accent-ink)}
+  header.tool h1{font-size:26px;font-weight:650;letter-spacing:-.015em;margin:6px 0 6px}
+  header.tool p{margin:0;color:var(--ink-soft);max-width:60ch;font-size:15px}
+  .privacy{margin-top:12px;display:inline-flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);
+    border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:5px 12px}
+  .privacy b{color:var(--ink-soft);font-weight:600}
+
+  /* ---- drop zone ---- */
+  .drop{display:block;margin-top:22px;background:var(--surface);border:1.5px dashed var(--line);
+    border-radius:14px;padding:30px 24px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s}
+  .drop:hover,.drop:focus-within{border-color:var(--accent);background:#fff}
+  .drop.drag{border-color:var(--accent);background:var(--accent-wash)}
+  .drop .big{font-size:16px;font-weight:600}
+  .drop .small{font-size:13px;color:var(--muted);margin-top:4px}
+  .drop input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+  .filebtn{display:inline-block;margin-top:14px;font:inherit;font-size:14px;font-weight:600;color:#fff;
+    background:var(--accent);border:none;border-radius:9px;padding:9px 18px;cursor:pointer}
+  .filebtn:hover{background:var(--accent-ink)}
+
+  .status{margin-top:14px;font-size:13.5px;color:var(--ink-soft);min-height:20px}
+  .status .spin{display:inline-block;width:12px;height:12px;border:2px solid var(--line);
+    border-top-color:var(--accent);border-radius:50%;vertical-align:-2px;margin-right:8px;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* ---- result paper card ---- */
+  .paper-card{background:var(--surface);border:1px solid var(--line);border-radius:14px;
+    box-shadow:var(--shadow);margin-top:22px;overflow:hidden;opacity:0;transform:translateY(6px);
+    animation:rise .35s ease forwards}
+  @keyframes rise{to{opacity:1;transform:none}}
+  .masthead{padding:22px 24px 18px;border-bottom:1px solid var(--line-soft)}
+  .masthead .eyebrow{color:var(--muted)}
+  .masthead h2{margin:5px 0 2px;font-size:21px;font-weight:650;letter-spacing:-.01em}
+  .meta{display:flex;flex-wrap:wrap;gap:6px 20px;margin-top:10px;font-size:13.5px;color:var(--ink-soft)}
+  .meta .k{color:var(--muted);font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;margin-right:6px}
+  .urlrow{margin-top:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .urlrow label{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .urlrow input{flex:1;min-width:240px;font:inherit;font-size:13px;color:var(--ink);
+    border:1px solid var(--line);border-radius:8px;padding:7px 10px;background:#fcfdfd}
+  .urlrow input:focus{outline:2px solid var(--accent-wash);border-color:var(--accent)}
+
+  /* stats strip */
+  .stats{display:flex;flex-wrap:wrap;gap:10px;padding:16px 24px;border-bottom:1px solid var(--line-soft);background:#fbfcfc}
+  .stat{display:flex;flex-direction:column;gap:1px}
+  .stat .n{font-size:20px;font-weight:650;font-variant-numeric:tabular-nums}
+  .stat .l{font-size:11px;color:var(--muted);font-family:var(--mono);letter-spacing:.06em;text-transform:uppercase}
+  .stat.sep{border-left:1px solid var(--line-soft);padding-left:18px;margin-left:8px}
+  .tags{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-left:auto;align-self:center;max-width:55%;justify-content:flex-end}
+  .tag{font-size:12px;color:var(--ink-soft);background:#fff;border:1px solid var(--line);border-radius:7px;padding:3px 9px;white-space:nowrap}
+  .tag b{font-weight:650;color:var(--ink)}
+
+  .flagnote{margin:0;padding:11px 24px;font-size:13px;color:var(--amber);background:var(--amber-wash);
+    border-bottom:1px solid var(--amber-line)}
+  .flagnote b{font-weight:650}
+
+  /* order paper register */
+  .register{list-style:none;margin:0;padding:0}
+  .item{display:grid;grid-template-columns:92px 1fr;border-bottom:1px solid var(--line-soft)}
+  .item:last-child{border-bottom:none}
+  .rail{padding:16px 12px 16px 24px;border-left:3px solid var(--accent);background:#fafcfc}
+  .item.closed .rail{border-left-color:var(--amber)}
+  .item.flag .rail{border-left-color:var(--amber)}
+  .ref{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--ink)}
+  .ctype{margin-top:7px;font-size:10.5px;font-family:var(--mono);letter-spacing:.04em;color:var(--muted);line-height:1.35}
+  .body{padding:16px 24px 16px 16px;min-width:0}
+  .ititle{font-weight:600;font-size:15px;letter-spacing:-.005em;margin:0}
+  .badges{display:inline-flex;gap:6px;margin-left:8px;vertical-align:1px}
+  .badge{font-size:10.5px;font-family:var(--mono);letter-spacing:.04em;text-transform:uppercase;
+    border-radius:6px;padding:2px 7px;border:1px solid}
+  .badge.open{color:var(--accent-ink);background:var(--accent-wash);border-color:transparent}
+  .badge.closed{color:var(--amber);background:var(--amber-wash);border-color:transparent}
+  .badge.check{color:var(--amber);background:#fff;border-color:var(--amber-line)}
+  .summary{margin:9px 0 0;font-size:14px;color:var(--ink-soft);white-space:pre-wrap}
+  .summary.clamp{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+  .conf{margin:9px 0 0;font-size:13.5px;font-style:italic;color:var(--amber)}
+  .more{margin-top:6px;font:inherit;font-size:12.5px;font-weight:600;color:var(--accent-ink);
+    background:none;border:none;padding:0;cursor:pointer}
+  .more:hover{text-decoration:underline}
+  .rec{margin-top:10px}
+  .rec summary{font-size:12px;font-family:var(--mono);letter-spacing:.04em;text-transform:uppercase;
+    color:var(--muted);cursor:pointer}
+  .rec[open] summary{color:var(--accent-ink)}
+  .rec .rectext{margin-top:6px;font-size:13.5px;color:var(--ink-soft);white-space:pre-wrap;
+    border-left:2px solid var(--line);padding-left:12px}
+  .nosum{color:var(--muted);font-style:italic}
+
+  details.raw{border-top:1px solid var(--line-soft)}
+  details.raw>summary{padding:12px 24px;font-size:12.5px;font-family:var(--mono);letter-spacing:.04em;
+    text-transform:uppercase;color:var(--muted);cursor:pointer;list-style:none}
+  details.raw>summary::-webkit-details-marker{display:none}
+  details.raw>summary::before{content:"› ";color:var(--accent)}
+  details.raw[open]>summary::before{content:"⌄ "}
+  details.raw pre{margin:0;padding:0 24px 18px;max-height:340px;overflow:auto;font-family:var(--mono);
+    font-size:11.5px;line-height:1.55;color:var(--ink-soft);white-space:pre-wrap;word-break:break-word}
+
+  .errcard{background:#fff;border:1px solid var(--amber-line);border-left:3px solid var(--amber);
+    border-radius:12px;padding:16px 20px;margin-top:18px}
+  .errcard h3{margin:0 0 4px;font-size:15px;color:var(--amber)}
+  .errcard p{margin:0;font-size:13.5px;color:var(--ink-soft)}
+
+  /* download bar */
+  .downloadbar{position:sticky;bottom:0;margin-top:26px;display:none;
+    background:rgba(233,237,235,.86);backdrop-filter:blur(8px);
+    border:1px solid var(--line);border-radius:12px;padding:13px 16px;
+    align-items:center;gap:14px}
+  .downloadbar.show{display:flex}
+  .downloadbar .info{font-size:13.5px;color:var(--ink-soft)}
+  .downloadbar .info b{color:var(--ink);font-weight:650}
+  .dlbtn{margin-left:auto;font:inherit;font-size:14px;font-weight:650;color:#fff;background:var(--accent);
+    border:none;border-radius:9px;padding:10px 18px;cursor:pointer}
+  .dlbtn:hover{background:var(--accent-ink)}
+  .dlbtn:disabled{opacity:.5;cursor:default}
+
+  footer{margin-top:34px;font-size:12px;color:var(--muted);line-height:1.6}
+  a{color:var(--accent-ink)}
+  @media (max-width:560px){
+    .item{grid-template-columns:74px 1fr}
+    .rail{padding-left:16px}
+    .body{padding-right:16px}
+    .tags{max-width:100%;justify-content:flex-start;margin-left:0}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .paper-card{animation:none;opacity:1;transform:none}
+    .spin{animation:none}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="tool">
+    <div class="eyebrow">InfoCouncil business papers</div>
+    <h1>Agenda Reader</h1>
+    <p>Drop in a council meeting agenda PDF. You get a readable summary of the business items and a spreadsheet matching the council_papers layout — built entirely in your browser.</p>
+    <div class="privacy">🔒 <span><b>Stays on your machine.</b>&nbsp;The PDF is read locally; nothing is uploaded.</span></div>
+  </header>
+
+  <label class="drop" id="drop" tabindex="0" role="button" aria-label="Choose agenda PDFs">
+    <div class="big">Drop agenda PDF(s) here</div>
+    <div class="small">InfoCouncil business papers — Bayside, Georges River and similar NSW councils. One or several at once.</div>
+    <span class="filebtn">Choose files</span>
+    <input id="file" type="file" accept="application/pdf,.pdf" multiple>
+  </label>
+
+  <div class="status" id="status" aria-live="polite"></div>
+
+  <div id="results"></div>
+
+  <div class="downloadbar" id="downloadbar">
+    <div class="info" id="dlinfo"></div>
+    <button class="dlbtn" id="dlbtn">Download spreadsheet (.xlsx)</button>
+  </div>
+
+  <footer>
+    Reads the PDF text layer with pdf.js and writes the workbook with SheetJS, both from a CDN. Scanned image-only PDFs can't be read. An independent community tool — not affiliated with or endorsed by any council.
+  </footer>
+</div>
+
+<script>
+"use strict";
+/* ============================================================
+   pdf.js worker — load from CDN as a blob so it works equally
+   from file:// and from a static host, no cross-origin worker fuss.
+============================================================ */
+const WORKER_URL = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+let workerReady = (async () => {
+  if (!window.pdfjsLib) return;
+  try {
+    const r = await fetch(WORKER_URL);
+    const blob = await r.blob();
+    pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(blob);
+  } catch (e) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = WORKER_URL; // direct fallback
+  }
+})();
+
+/* ============================================================
+   TEXT EXTRACTION — reconstruct lines from pdf.js text items
+   by grouping on the y baseline and ordering by x. This mirrors
+   the column-aware text that the original Python parser expects
+   (label and value on one line; headings alone on theirs).
+============================================================ */
+function pageItemsToLines(items) {
+  const toks = [];
+  for (const it of items) {
+    if (it.str === undefined || it.str === "") continue;
+    const h = Math.hypot(it.transform[1], it.transform[3]) || it.height || 10;
+    // pdf.js gives the run's real advance width in the transform's space;
+    // using it (not a char-count estimate) stops word-internal splits from
+    // gaining a spurious space, while real column gaps still get one.
+    const w = (typeof it.width === "number" && it.width > 0) ? it.width : it.str.length * h * 0.5;
+    toks.push({ x: it.transform[4], y: it.transform[5], h, w, s: it.str });
+  }
+  if (!toks.length) return [];
+  toks.sort((a, b) => (b.y - a.y) || (a.x - b.x));
+  const rows = [];
+  let cur = [], curY = null;
+  for (const t of toks) {
+    const tol = Math.max(3, t.h * 0.5);
+    if (curY === null || Math.abs(t.y - curY) <= tol) {
+      cur.push(t);
+      curY = curY === null ? t.y : (curY + t.y) / 2;
+    } else {
+      rows.push(cur); cur = [t]; curY = t.y;
+    }
+  }
+  if (cur.length) rows.push(cur);
+  return rows.map(row => {
+    row.sort((a, b) => a.x - b.x);
+    let out = "", prevEnd = null;
+    for (const t of row) {
+      if (prevEnd !== null && (t.x - prevEnd) > t.h * 0.2) out += " ";
+      out += t.s;
+      prevEnd = t.x + t.w;
+    }
+    return out.replace(/\s+/g, " ").replace(/\s+$/,"");
+  });
+}
+
+async function extractLines(arrayBuffer, onProgress) {
+  await workerReady;
+  const doc = await pdfjsLib.getDocument({ data: arrayBuffer, isEvalSupported: false }).promise;
+  const lines = [];
+  for (let p = 1; p <= doc.numPages; p++) {
+    const page = await doc.getPage(p);
+    const tc = await page.getTextContent();
+    for (const ln of pageItemsToLines(tc.items)) lines.push(ln);
+    if (onProgress) onProgress(p, doc.numPages);
+  }
+  return lines;
+}
+
+/* ============================================================
+   PARSER — faithful port of bayside_digest.py (source of truth),
+   verified line-for-line against the real PDF via pdf.js.
+============================================================ */
+const FIELD_LABELS = ["Report by","Submitted by","File","Summary",
+  "Officer Recommendation","Motion","Mayoral Minute","Confidential",
+  "Background","Attachments"];
+const MONTHS = "January February March April May June July August September October November December".split(" ");
+const ITEM_RE = /^Item No\s+([A-Za-z0-9.]+)\b/;
+const CONTENT_TYPE = { report:"Report", mayoral:"Mayoral Minute", motion:"Notice of Motion",
+  confidential:"Confidential Report", da:"Development Application", planning_proposal:"Planning Proposal" };
+
+const NOISE_RES = [
+  /^\s*$/,
+  /^\x0c?\s*Bayside Council\b\s*(?:\d{1,2}\/\d{2}\/\d{4})?\s*$/i,
+  /^\x0c?\s*City .+ Committee\s*$/i,
+  /^\s*\d{1,2}\/\d{2}\/\d{4}\s*$/,
+  /^\s*Item (No )?[A-Z]{2,4}\d{2}\.\d{3}\b/,
+  /^\s*\d{1,3}\s*$/,
+  /^\s*Doc ID\b/i,
+  /^\x0c/
+];
+const isNoise = (line) => NOISE_RES.some(rx => rx.test(line));
+const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const sq = (s) => s.replace(/\s+/g, " ").trim();
+
+function classifySection(title) {
+  const t = title.toUpperCase().replace(/\s+/g, " ").trim();
+  if (t.includes("DEVELOPMENT APPLICATION")) return "da";
+  if (t.includes("PLANNING PROPOSAL")) return "planning_proposal";
+  if (t.includes("CONFIDENTIAL")) return "confidential";
+  if (t.startsWith("REPORTS")) return "report";
+  if (t.includes("MAYORAL MINUTES")) return "mayoral";
+  if (t.includes("NOTICES OF MOTION")) return "motion";
+  return null;
+}
+function findSections(lines) {
+  const out = [];
+  lines.forEach((ln, i) => {
+    const s = ln.replace(/\x0c/g, "").trim();
+    const m = s.match(/^\d+\s+([A-Z][A-Z &/\u2013-]{3,})$/);
+    if (m) out.push([i, classifySection(m[1])]);
+  });
+  return out;
+}
+function parseCommittee(lines) {
+  const pats = [/^(City [A-Za-z& ]+? Committee)\b/, /^(Bayside Local Planning Panel)\b/, /^(Council Meeting)\b/];
+  const counts = {};
+  for (const ln of lines) {
+    const s = ln.trim();
+    for (const p of pats) { const m = s.match(p); if (m) { const name = sq(m[1]); counts[name] = (counts[name]||0)+1; break; } }
+  }
+  const keys = Object.keys(counts);
+  if (!keys.length) return "Council / Committee";
+  return keys.reduce((a, b) => counts[b] > counts[a] ? b : a);
+}
+function parseMeetingDate(text) {
+  const m = text.match(/(Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day\s+(\d{1,2})\s+(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{4})/);
+  if (!m) return [null, ""];
+  return [{ y:+m[4], mo:MONTHS.indexOf(m[3])+1, d:+m[2] }, sq(m[0])];
+}
+function parseMeetingTime(lines, committee) {
+  const head = lines.slice(0, 60).join("\n");
+  let m = head.match(/\b(\d{1,2})[:.](\d{2})\s*(am|pm|AM|PM)\b/) || head.match(/\b(\d{1,2})\s*(am|pm|AM|PM)\b/);
+  if (m) { const hh = m[1]; const mm = m.length >= 4 ? m[2] : "00"; const ap = m[m.length-1].toUpperCase(); return `${parseInt(hh,10)}:${mm} ${ap}`; }
+  if (/^council meeting/i.test(committee)) return "7:00 PM";
+  return "";
+}
+function parseVenue(lines) {
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].trim().replace(/:+$/, "").trim().toLowerCase() === "venue") {
+      let tail = lines.slice(i+1, i+4).map(x => x.trim()).filter(Boolean);
+      tail = tail.filter(t => !t.includes("Contact") && !t.includes("@"));
+      const parts = tail.slice(0, 2).map(t => t.trim().replace(/,+$/, "").trim());
+      return parts.filter(Boolean).join(", ");
+    }
+  }
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].trim().match(/will be held\s+(?:in|at)\s+(.*)/i);
+    if (m) {
+      let parts = [m[1].trim().replace(/^the\s+/i, "")];
+      for (const nxt of lines.slice(i+1, i+4)) { const s = nxt.trim(); if (!s) continue; if (/^on\b/i.test(s)) break; parts.push(s); }
+      parts = parts.map(p => p.trim().replace(/,+$/, "").trim()).filter(Boolean);
+      return parts.filter(Boolean).join(", ");
+    }
+  }
+  return "";
+}
+function captureSubject(block) {
+  const parts = []; let started = false;
+  for (const ln of block) {
+    const s = ln.trim();
+    if (!started) { const m = s.match(/^Subject\s+(.*)/); if (m) { parts.push(m[1].trim()); started = true; } continue; }
+    if (FIELD_LABELS.some(l => s.startsWith(l))) break;
+    if (s) parts.push(s);
+  }
+  return sq(parts.join(" "));
+}
+function captureBetween(block, startLabel, stopLabels, heading = false) {
+  const out = []; let cap = false;
+  for (const ln of block) {
+    const s = ln.trim();
+    if (!cap) {
+      const hit = heading ? new RegExp(`^${esc(startLabel)}\\s*:?$`).test(s) : (s === startLabel || s.startsWith(startLabel));
+      if (hit) cap = true;
+      continue;
+    }
+    if (stopLabels.some(l => s === l || s.startsWith(l))) break;
+    out.push(ln);
+  }
+  return out;
+}
+function cleanParagraph(raw) { return sq(raw.filter(ln => !isNoise(ln)).map(ln => ln.trim()).join(" ")); }
+const ATTACH_FOOTER_RE = /\bItem\s+[A-Za-z0-9.]+\s*[\u2013-]\s*Attachment\b/i;
+function bodyBeforeAttachments(block) {
+  for (let i = 0; i < block.length; i++) if (ATTACH_FOOTER_RE.test(block[i])) return block.slice(0, i);
+  return block;
+}
+function captureItemText(block) {
+  const body = bodyBeforeAttachments(block);
+  let text = cleanParagraph(captureBetween(body, "Summary", ["Officer Recommendation","Motion","Background","Attachments"], true));
+  if (!text) text = cleanParagraph(captureBetween(body, "Motion", ["Mayoral Minute","Background","Attachments","Officer Recommendation"]));
+  if (!text) text = cleanParagraph(captureBetween(body, "Response", ["Officer Recommendation","Background","Attachments"], true));
+  return text;
+}
+function captureMotionText(block) {
+  const body = bodyBeforeAttachments(block);
+  const intro = cleanParagraph(captureBetween(body, "Summary", ["Officer Recommendation","Motion","Background","Attachments"], true));
+  const motion = cleanParagraph(captureBetween(body, "Motion", ["Officer Recommendation","Background","Attachments"], true));
+  return [intro, motion].filter(Boolean).join(" ");
+}
+/* additive (on-screen only): the proposed resolution, if present */
+function captureRecommendation(block) {
+  const body = bodyBeforeAttachments(block);
+  return cleanParagraph(captureBetween(body, "Officer Recommendation",
+    ["Background","Attachments","Report by","Submitted by","File","Motion","Summary"], true));
+}
+function closureGround(block) {
+  const body = block.map(b => b.trim()).join(" ");
+  const m = body.match(/section\s*(10A\s*\(2\)\s*\([a-z]\))/i);
+  const sec = m ? m[1].replace(/\s+/g, "") : "";
+  let reason = "";
+  if (/commercial advantage/i.test(body)) reason = "commercial-in-confidence";
+  else if (/personal/i.test(body)) reason = "personnel matter";
+  else if (/legal/i.test(body)) reason = "legal advice";
+  const bits = [reason, sec ? `LGA s${sec}` : ""].filter(Boolean);
+  return bits.length ? bits.join(" \u2014 ") : "closed session";
+}
+const LPP_LABELS = ["Item No","Application No","Property","Application Type","Proposal","Owner","Applicant","Ward","Lodgement Date","No. of Submissions","Cost of Development","Reason Criteria","Report by","Reason for Report","Officer Recommendation","Recommendation"];
+function fieldValue(block, label) {
+  const parts = []; let started = false;
+  for (const ln of block) {
+    const s = ln.trim();
+    if (!started) { const m = s.match(new RegExp(`^${esc(label)}\\s+(.*)`)); if (m) { parts.push(m[1].trim()); started = true; } continue; }
+    if (!s || LPP_LABELS.some(l => s.startsWith(l))) break;
+    parts.push(s);
+  }
+  return sq(parts.join(" "));
+}
+function captureDa(block) {
+  const app = fieldValue(block, "Application No"), prop = fieldValue(block, "Property"),
+        proposal = fieldValue(block, "Proposal"), subs = fieldValue(block, "No. of Submissions");
+  const title = [app, prop].filter(Boolean).join(" \u2013 ") || prop || "Development Application";
+  const body = block.map(b => b.trim()).join(" ");
+  let outcome = "";
+  if (/GRANT(?:ING)?\s+CONSENT|approv/i.test(body)) outcome = "Officer recommendation: grant consent.";
+  else if (/REFUS/i.test(body)) outcome = "Officer recommendation: refuse consent.";
+  const extra = []; if (subs) extra.push(`${subs} submissions`);
+  const summary = [proposal, outcome, extra.length ? `(${extra.join("; ")})` : ""].filter(Boolean).join(" ");
+  return [title, summary.trim()];
+}
+
+function parseAgenda(lines) {
+  const text = lines.join("\n");
+  const committee = parseCommittee(lines);
+  const [mdate, mdateText] = parseMeetingDate(text);
+  const venue = parseVenue(lines);
+  const meetingTime = parseMeetingTime(lines, committee);
+  const reports = [];
+  const sections = findSections(lines);
+  const end = lines.length;
+  for (let si = 0; si < sections.length; si++) {
+    const [start, kind] = sections[si];
+    if (kind === null) continue;
+    const nxt = si + 1 < sections.length ? sections[si+1][0] : end;
+    const items = []; const seen = new Set();
+    for (let i = start; i < nxt; i++) {
+      const m = lines[i].trim().match(ITEM_RE);
+      if (m && !seen.has(m[1])) { seen.add(m[1]); items.push(i); }
+    }
+    for (let n = 0; n < items.length; n++) {
+      const idx = items[n]; const blkEnd = n + 1 < items.length ? items[n+1] : nxt;
+      const block = lines.slice(idx, blkEnd);
+      const code = lines[idx].trim().match(ITEM_RE)[1];
+      if (kind === "da" || kind === "planning_proposal") {
+        const [title, summary] = captureDa(block);
+        reports.push({ code, subject:title, kind, confidential:false, summary, closure_ground:"", recommendation:captureRecommendation(block) });
+        continue;
+      }
+      const subject = captureSubject(block);
+      const confidential = kind === "confidential" || subject.toUpperCase().startsWith("CONFIDENTIAL");
+      const rep = { code, subject, kind: confidential ? "confidential" : kind, confidential, summary:"", closure_ground:"", recommendation:"" };
+      if (confidential) {
+        rep.subject = subject.replace(/^CONFIDENTIAL\s*[-\u2013]\s*/i, "").trim();
+        rep.closure_ground = closureGround(block);
+      } else {
+        rep.summary = kind === "motion" ? captureMotionText(block) : captureItemText(block);
+        rep.recommendation = captureRecommendation(block);
+      }
+      reports.push(rep);
+    }
+  }
+  return { committee, meeting_date: mdate, meeting_date_text: mdateText, venue, meeting_time: meetingTime, reports };
+}
+
+/* ============================================================
+   SPREADSHEET ROW BUILDERS — ported from to_spreadsheet.py
+   so the .xlsx matches the council_papers template exactly.
+============================================================ */
+const BASE_URL = "https://infoweb.bayside.nsw.gov.au/";
+const HEADER_COLS = ["meeting_uid","meeting_name","meeting_date","meeting_time",
+  "submission_close_date","submission_close_time","agenda_ready","submissions_open","meeting_link","location"];
+const DETAIL_COLS = ["meeting_uid","content_type","ref_number","title","summary"];
+
+const pad2 = (n) => String(n).padStart(2, "0");
+function slug(s) { return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+/g, "-").replace(/^-+|-+$/g, ""); }
+function isoDate(d) { return d ? `${d.y}-${pad2(d.mo)}-${pad2(d.d)}` : ""; }
+function ymd(d) { return d ? `${d.y}${pad2(d.mo)}${pad2(d.d)}` : "nodate"; }
+function meetingUid(a) { return `${slug(a.committee)}-${ymd(a.meeting_date)}`; }
+function todayISO() { const t = new Date(); return `${t.getFullYear()}-${pad2(t.getMonth()+1)}-${pad2(t.getDate())}`; }
+function closeISO(d) {
+  if (!d) return "";
+  const dt = new Date(Date.UTC(d.y, d.mo - 1, d.d)); dt.setUTCDate(dt.getUTCDate() - 1);
+  return `${dt.getUTCFullYear()}-${pad2(dt.getUTCMonth()+1)}-${pad2(dt.getUTCDate())}`;
+}
+function headerRow(a, url) {
+  const close = closeISO(a.meeting_date);
+  return {
+    meeting_uid: meetingUid(a),
+    meeting_name: a.committee,
+    meeting_date: isoDate(a.meeting_date),
+    meeting_time: a.meeting_time,
+    submission_close_date: close,
+    submission_close_time: "5:00 PM",
+    agenda_ready: true,
+    submissions_open: !!(close && todayISO() <= close),
+    meeting_link: url || BASE_URL,
+    location: a.venue
+  };
+}
+function detailRows(a) {
+  const uid = meetingUid(a);
+  return a.reports.map(r => ({
+    meeting_uid: uid,
+    content_type: CONTENT_TYPE[r.kind] || "Report",
+    ref_number: r.code,
+    title: r.subject,
+    summary: r.confidential ? `Confidential \u2014 ${r.closure_ground}. Report not public.` : r.summary
+  }));
+}
+
+/* ============================================================
+   UI
+============================================================ */
+const parsed = [];               // { id, agenda, url, name }
+let nextId = 0;
+
+const elDrop = document.getElementById("drop");
+const elFile = document.getElementById("file");
+const elStatus = document.getElementById("status");
+const elResults = document.getElementById("results");
+const elBar = document.getElementById("downloadbar");
+const elDlInfo = document.getElementById("dlinfo");
+const elDlBtn = document.getElementById("dlbtn");
+
+const escapeHtml = (s) => String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+
+if (!window.pdfjsLib || !window.XLSX) {
+  elStatus.textContent = "Couldn't load the PDF/spreadsheet libraries from the CDN. Check your connection and reload — the tool needs them to run.";
+}
+
+elFile.addEventListener("change", e => handleFiles(e.target.files));
+["dragenter","dragover"].forEach(ev => elDrop.addEventListener(ev, e => { e.preventDefault(); elDrop.classList.add("drag"); }));
+["dragleave","drop"].forEach(ev => elDrop.addEventListener(ev, e => { e.preventDefault(); if (ev === "drop" || e.target === elDrop) elDrop.classList.remove("drag"); }));
+elDrop.addEventListener("drop", e => { if (e.dataTransfer && e.dataTransfer.files) handleFiles(e.dataTransfer.files); });
+elDrop.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); elFile.click(); } });
+
+async function handleFiles(fileList) {
+  const files = Array.from(fileList).filter(f => /\.pdf$/i.test(f.name) || f.type === "application/pdf");
+  if (!files.length) { elStatus.textContent = "Those don't look like PDF files. Drop an InfoCouncil agenda PDF."; return; }
+  for (const file of files) {
+    elStatus.innerHTML = `<span class="spin"></span>Reading <b>${escapeHtml(file.name)}</b>…`;
+    try {
+      const buf = await file.arrayBuffer();
+      const lines = await extractLines(buf, (p, total) => {
+        elStatus.innerHTML = `<span class="spin"></span>Reading <b>${escapeHtml(file.name)}</b> — page ${p} of ${total}…`;
+      });
+      if (!lines.join("").trim()) { renderScanned(file.name); continue; }
+      const agenda = parseAgenda(lines);
+      const rec = { id: nextId++, agenda, url: BASE_URL, name: file.name, lines };
+      parsed.push(rec);
+      renderCard(rec);
+    } catch (err) {
+      renderError(file.name, err && err.message ? err.message : String(err));
+    }
+  }
+  elStatus.textContent = parsed.length ? "" : elStatus.textContent;
+  updateBar();
+}
+
+function flagged(r) { return (!r.confidential && !r.summary) || !r.subject; }
+
+function renderCard(rec) {
+  const a = rec.agenda;
+  const total = a.reports.length;
+  const byType = {};
+  a.reports.forEach(r => { const t = CONTENT_TYPE[r.kind] || "Report"; byType[t] = (byType[t]||0)+1; });
+  const closedN = a.reports.filter(r => r.confidential).length;
+  const openN = total - closedN;
+  const flags = a.reports.filter(flagged);
+
+  const metaBits = [];
+  if (a.meeting_date_text) metaBits.push(`<span><span class="k">Date</span>${escapeHtml(a.meeting_date_text)}</span>`);
+  if (a.meeting_time) metaBits.push(`<span><span class="k">Time</span>${escapeHtml(a.meeting_time)}</span>`);
+  if (a.venue) metaBits.push(`<span><span class="k">Venue</span>${escapeHtml(a.venue)}</span>`);
+
+  const tagHtml = Object.keys(byType).sort().map(t => `<span class="tag"><b>${byType[t]}</b> ${escapeHtml(t)}</span>`).join("");
+
+  const itemsHtml = a.reports.map((r, i) => {
+    const ct = CONTENT_TYPE[r.kind] || "Report";
+    const isFlag = flagged(r);
+    const cls = ["item", r.confidential ? "closed" : "", isFlag ? "flag" : ""].filter(Boolean).join(" ");
+    const badges = [];
+    badges.push(r.confidential ? `<span class="badge closed">Closed</span>` : `<span class="badge open">Open</span>`);
+    if (isFlag) badges.push(`<span class="badge check">Check</span>`);
+
+    let bodyText;
+    if (r.confidential) {
+      bodyText = `<p class="conf">Confidential — ${escapeHtml(r.closure_ground)}. Report not public.</p>`;
+    } else if (r.summary) {
+      const long = r.summary.length > 280;
+      bodyText = `<p class="summary${long ? " clamp" : ""}" id="sum-${rec.id}-${i}">${escapeHtml(r.summary)}</p>` +
+        (long ? `<button class="more" data-target="sum-${rec.id}-${i}">Show full summary</button>` : "");
+    } else {
+      bodyText = `<p class="summary nosum">No summary section found — check the full paper.</p>`;
+    }
+    const recHtml = (!r.confidential && r.recommendation)
+      ? `<details class="rec"><summary>Officer recommendation</summary><div class="rectext">${escapeHtml(r.recommendation)}</div></details>`
+      : "";
+
+    return `<li class="${cls}">
+      <div class="rail"><div class="ref">${escapeHtml(r.code)}</div><div class="ctype">${escapeHtml(ct)}</div></div>
+      <div class="body">
+        <p class="ititle">${escapeHtml(r.subject || "(title not found)")}<span class="badges">${badges.join("")}</span></p>
+        ${bodyText}${recHtml}
+      </div></li>`;
+  }).join("");
+
+  const flagNote = flags.length
+    ? `<p class="flagnote"><b>${flags.length} item${flags.length>1?"s":""} flagged</b> for a manual check — a field couldn't be extracted cleanly (${flags.map(f=>escapeHtml(f.code)).join(", ")}).</p>`
+    : "";
+
+  const card = document.createElement("div");
+  card.className = "paper-card";
+  card.dataset.id = rec.id;
+  card.innerHTML = `
+    <div class="masthead">
+      <div class="eyebrow">Agenda · ${escapeHtml(rec.name)}</div>
+      <h2>${escapeHtml(a.committee)}</h2>
+      <div class="meta">${metaBits.join("")}</div>
+      <div class="urlrow">
+        <label for="url-${rec.id}">Source URL</label>
+        <input id="url-${rec.id}" type="url" value="${escapeHtml(rec.url)}" spellcheck="false">
+      </div>
+    </div>
+    <div class="stats">
+      <div class="stat"><span class="n">${total}</span><span class="l">Items</span></div>
+      <div class="stat sep"><span class="n">${openN}</span><span class="l">Open</span></div>
+      <div class="stat"><span class="n">${closedN}</span><span class="l">Closed</span></div>
+      <div class="tags">${tagHtml}</div>
+    </div>
+    ${flagNote}
+    <ul class="register">${itemsHtml || '<li class="item"><div class="rail"></div><div class="body"><p class="summary nosum">No business items detected in the reports / motions / confidential sections.</p></div></li>'}</ul>
+    <details class="raw"><summary>Raw extracted text (${rec.lines.length} lines)</summary><pre>${escapeHtml(rec.lines.join("\n"))}</pre></details>
+  `;
+  elResults.appendChild(card);
+
+  card.querySelectorAll(".more").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const p = card.querySelector("#" + btn.dataset.target);
+      const clamped = p.classList.toggle("clamp");
+      btn.textContent = clamped ? "Show full summary" : "Show less";
+    });
+  });
+  card.querySelector(`#url-${rec.id}`).addEventListener("input", e => { rec.url = e.target.value; });
+}
+
+function renderScanned(name) {
+  const d = document.createElement("div");
+  d.className = "errcard";
+  d.innerHTML = `<h3>${escapeHtml(name)} — no readable text</h3><p>This looks like a scanned (image-only) PDF. This tool reads the text layer and can't OCR images. Try a digitally-generated InfoCouncil paper.</p>`;
+  elResults.appendChild(d);
+}
+function renderError(name, msg) {
+  const d = document.createElement("div");
+  d.className = "errcard";
+  d.innerHTML = `<h3>${escapeHtml(name)} — couldn't read this file</h3><p>${escapeHtml(msg)}</p>`;
+  elResults.appendChild(d);
+}
+
+function updateBar() {
+  if (!parsed.length) { elBar.classList.remove("show"); return; }
+  const meetings = parsed.length;
+  const items = parsed.reduce((s, r) => s + r.agenda.reports.length, 0);
+  elDlInfo.innerHTML = `<b>${meetings}</b> meeting${meetings>1?"s":""}, <b>${items}</b> item${items>1?"s":""} ready.`;
+  elBar.classList.add("show");
+}
+
+function buildWorkbook() {
+  const headerAoa = [HEADER_COLS.slice()];
+  const detailAoa = [DETAIL_COLS.slice()];
+  for (const rec of parsed) {
+    const h = headerRow(rec.agenda, rec.url);
+    headerAoa.push(HEADER_COLS.map(c => h[c]));
+    for (const row of detailRows(rec.agenda)) detailAoa.push(DETAIL_COLS.map(c => row[c]));
+  }
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(headerAoa), "meeting_header");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(detailAoa), "agenda_detail");
+  return wb;
+}
+function downloadName() {
+  if (parsed.length === 1) {
+    const a = parsed[0].agenda;
+    return `council_papers_${slug(a.committee)}_${ymd(a.meeting_date)}.xlsx`;
+  }
+  return `council_papers_${parsed.length}-meetings_${todayISO().replace(/-/g,"")}.xlsx`;
+}
+elDlBtn.addEventListener("click", () => {
+  if (!parsed.length) return;
+  try {
+    const wb = buildWorkbook();
+    const out = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+    const blob = new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = downloadName();
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  } catch (err) {
+    elStatus.textContent = "Couldn't build the spreadsheet: " + (err && err.message ? err.message : err);
+  }
+});
+</script>
+</body>
+</html>
