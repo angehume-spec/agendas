@@ -63,5 +63,3 @@ Hosted on **GitHub Pages** from this repo (root of the `main` branch). Any stati
 - No build step, no framework, no dependencies to install — a single `index.html`.
 
 ## Licence
-
-Add your preference — [MIT](https://choosealicense.com/licenses/mit/) is a sensible default for open civic tooling. Drop a `LICENSE` file in the repo root to make it official.
